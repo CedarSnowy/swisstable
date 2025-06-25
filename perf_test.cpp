@@ -91,7 +91,7 @@ void test_performance_comparison() {
         auto data = generate_test_data(size);
         
         std::cout << "\nTest data size: " << size << " elements\n";
-        test_performance<UnorderedMap<int, int>>("Your container", data);
+        test_performance<UnorderedMap<int, int>>("swisstable", data);
         test_performance<std::unordered_map<int, int>>("std::unordered_map", data);
     }
 }
@@ -172,7 +172,7 @@ void test_find_performance(const std::string& name,
 }
 
 void test_find_performance_comparison() {
-    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000};
+    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000, 10000000};
     
     std::cout << "\n=== Find Performance Test ===\n";
     
@@ -195,7 +195,7 @@ void test_find_performance_comparison() {
         for (const auto& [k, v] : data) {
             your_map.try_emplace(k, v);
         }
-        test_find_performance("Your container", your_map, keys_to_find);
+        test_find_performance("swisstable", your_map, keys_to_find);
         
         // 测试std容器
         std::unordered_map<int, int> std_map;
@@ -282,7 +282,7 @@ void test_erase_performance(const std::string& name,
 }
 
 void test_erase_performance_comparison() {
-    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000};
+    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000, 10000000};
     
     std::cout << "\n=== Erase Performance Test ===\n";
     
@@ -305,7 +305,7 @@ void test_erase_performance_comparison() {
         for (const auto& [k, v] : data) {
             your_map.try_emplace(k, v);
         }
-        test_erase_performance("Your container", your_map, keys_to_erase);
+        test_erase_performance("swisstable", your_map, keys_to_erase);
         
         // 测试std容器
         std::unordered_map<int, int> std_map;
@@ -327,8 +327,7 @@ void test_iteration_performance(const std::string& name,
         for (auto it = map.begin(); it != map.end(); ++it) {
             sum += it->second;
         }
-    }
-    
+    } 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
     
@@ -337,8 +336,30 @@ void test_iteration_performance(const std::string& name,
               << "iteration count: " << iteration_count << ")\n";
 }
 
+template<typename MapType>
+void test_iteration_performance_traverse(const std::string& name, 
+                               MapType& map, 
+                               size_t iteration_count) {
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    volatile size_t sum = 0;
+    auto cal_sum = [&sum](HashPair<int, int> &pair) {
+        sum += pair.second;
+    };
+    map.ctraverse(map.cbegin(), map.cend(), cal_sum);
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    
+    std::cout << name << " traverse iteration time: " << duration << " ns ("
+              << "container size: " << map.size() << ", "
+              << "iteration count: " << iteration_count << ")\n";
+}
+
+
+
 void test_iteration_performance_comparison() {
-    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000};
+    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000, 10000000};
     const size_t iteration_count = 10;
     
     std::cout << "\n=== Iteration Performance Test ===\n";
@@ -362,7 +383,8 @@ void test_iteration_performance_comparison() {
         for (auto it = std_map.begin(); it != std_map.end(); ++it) {}
         
         // 测试迭代性能
-        test_iteration_performance("Your container", your_map, iteration_count);
+        test_iteration_performance_traverse("swisstable traverse", your_map, iteration_count);
+        test_iteration_performance("swisstable operator ++", your_map, iteration_count);
         test_iteration_performance("std::unordered_map", std_map, iteration_count);
     }
 }
@@ -382,7 +404,7 @@ void test_clear_performance(const std::string& name, MapType& map) {
 
 // 清除性能对比测试
 void test_clear_performance_comparison() {
-    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000};
+    const std::vector<size_t> sizes = {100, 1000, 10000, 100000, 1000000, 10000000};
     
     std::cout << "\n=== Clear Performance Test ===\n";
     
@@ -396,7 +418,7 @@ void test_clear_performance_comparison() {
         for (const auto& [k, v] : data) {
             your_map.try_emplace(k, v);
         }
-        test_clear_performance("Your container", your_map);
+        test_clear_performance("swisstable", your_map);
         
         // 测试std容器
         std::unordered_map<int, int> std_map;
@@ -408,27 +430,27 @@ void test_clear_performance_comparison() {
 }
 
 int main() {
-    UnorderedMap<int, int> m;
-    for (size_t i = 0; i < 100; ++i) {
-        m.try_emplace(i, i);
-    }
-    for (size_t i = 0; i < 100; ++i) {
-        m.find(i);
-    }
-    for (size_t i = 0; i < 100; ++i) {
-        m.erase(i);
-    }
+    // UnorderedMap<int, int> m;
+    // for (size_t i = 0; i < 100; ++i) {
+    //     m.try_emplace(i, i);
+    // }
+    // for (size_t i = 0; i < 100; ++i) {
+    //     m.find(i);
+    // }
+    // for (size_t i = 0; i < 100; ++i) {
+    //     m.erase(i);
+    // }
     // test correctness
     // test_correctness();
     // test_find_correctness();
     // test_erase_correctness();
 
     // // perfermance test
-    // test_performance_comparison();        // insert
-    // test_find_performance_comparison();   // find
-    // test_erase_performance_comparison();  // erase
-    // test_iteration_performance_comparison(); // iteration
-    // test_clear_performance_comparison();  // clear
+    test_performance_comparison();        // insert
+    test_find_performance_comparison();   // find
+    test_erase_performance_comparison();  // erase
+    test_iteration_performance_comparison(); // iteration
+    test_clear_performance_comparison();  // clear
     
     // std::cout << "\nAll tests completed!\n";
     // return 0;

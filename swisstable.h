@@ -7,6 +7,8 @@
 #include <cstring>
 #include <iostream>
 
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 #define InValidIdx SIZE_MAX
 
 template <typename T, typename = void>
@@ -248,22 +250,32 @@ public:
         pointer operator->() { return get_data_ptr(); }
 
         iterator_template &operator++() {
-            if (_group_idx == InValidIdx) {
+            if (unlikely(_group_idx == InValidIdx)) {
                 return *this;
             }
             // search in current group
             uint16_t used_slot = _table->match_full(_group_idx);
             used_slot = (used_slot >> (_slot_idx + 1)) << (_slot_idx + 1);
-            if (used_slot) {
+            if (likely(used_slot)) {
                 _slot_idx = __builtin_ctz(used_slot);
+                if (unlikely(_slot_idx + _group_idx > _table->_capacity)) {
+                    _table = NULL;
+                    _slot_idx = InValidIdx;
+                    _group_idx = InValidIdx;
+                }
                 return *this;
             }
             // search the next group
             for (size_t gidx = _group_idx + group_size; gidx < _table->_capacity; gidx += group_size) {
                 uint16_t used_slot = _table->match_full(gidx);
-                if (used_slot) {
+                if (likely(used_slot)) {
                     _group_idx = gidx;
                     _slot_idx = __builtin_ctz(used_slot);
+                    if (unlikely(_slot_idx + _group_idx > _table->_capacity)) {
+                        _table = NULL;
+                        _slot_idx = InValidIdx;
+                        _group_idx = InValidIdx;
+                    }
                     return *this;
                 }
             }
@@ -511,6 +523,74 @@ public:
     void destroy() {
         destroy_used_slots();
         destroy_table();
+    }
+
+    template <typename Callback>
+    void ctraverse(const_iterator start, const_iterator dest, Callback &&callback) {
+        size_t start_true_idx = 0;
+        size_t dest_true_idx = 0;
+        if (start == cend()) {
+            return;
+        }
+        start_true_idx = get_true_idx(start._group_idx, start._slot_idx); 
+        if (dest == cend()) {
+            dest_true_idx = _capacity;
+        } else {
+            dest_true_idx = get_true_idx(dest._group_idx, dest._slot_idx);
+        }
+        if (start_true_idx > dest_true_idx) {
+            return;
+        }
+        size_t gidx = start_true_idx;
+        uint16_t used_slot = 0;
+        size_t sidx = 0;
+        for (; gidx < dest_true_idx; gidx += group_size) {
+            used_slot = match_full(gidx);
+            while(used_slot) {
+                sidx = __builtin_ctz(used_slot);
+                if (unlikely(gidx + sidx > dest_true_idx) || unlikely(gidx + sidx == _capacity)) {
+                    return;
+                }
+                entry_base &entry_ptr = _data[gidx + sidx];
+                callback(entry_ptr);
+                used_slot &= used_slot - 1;
+            }
+        }
+        return;
+    }
+
+    template <typename Callback>
+    void traverse(iterator start, iterator dest, Callback &&callback) {
+        size_t start_true_idx = 0;
+        size_t dest_true_idx = 0;
+        if (start == end()) {
+            return;
+        }
+        start_true_idx = get_true_idx(start._group_idx, start._slot_idx); 
+        if (dest == end()) {
+            dest_true_idx = _capacity;
+        } else {
+            dest_true_idx = get_true_idx(dest._group_idx, dest._slot_idx);
+        }
+        if (start_true_idx > dest_true_idx) {
+            return;
+        }
+        size_t gidx = start_true_idx;
+        uint16_t used_slot = 0;
+        size_t sidx = 0;
+        for (; gidx < dest_true_idx; gidx += group_size) {
+            used_slot = match_full(gidx);
+            while(used_slot) {
+                sidx = __builtin_ctz(used_slot);
+                if (unlikely(gidx + sidx > dest_true_idx) || unlikely(gidx + sidx == _capacity)) {
+                    return;
+                }
+                entry_base &entry_ptr = _data[gidx + sidx];
+                callback(entry_ptr);
+                used_slot &= used_slot - 1;
+            }
+        }
+        return;
     }
 
 private:

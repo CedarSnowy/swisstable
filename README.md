@@ -40,12 +40,4 @@ int main() {
 }
 ```
 ## TODO
-### commit traverse
-since operator++ is very slow, traditional iteration way is slower than STL.
-```cpp
-for (auto it = m.begin(); it != m.end(); ++it) {
-    /* do something */
-}
-```
-
 ### add ARM support
