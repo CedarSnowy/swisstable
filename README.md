@@ -1,6 +1,6 @@
 # swisstable
 
-Implement the UnorderedMap and UnorderedSet containers based on Swisstable, has the same interface as STL(support mostly), and is 2 to 5 times faster than STL.  
+Implement the UnorderedMap and UnorderedSet containers based on Swisstable, has the same interface as STL(support mostly), and is 2 to 1000 times faster than STL.  
 
 The implementation is more concise than the official one, and you can directly include the header file to use.
 
