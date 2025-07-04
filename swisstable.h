@@ -1,5 +1,9 @@
+#ifndef _C__23_SWISSTABLE_H
+#define _C__23_SWISSTABLE_H
 #if defined(__x86_64__)
+
 #include <emmintrin.h>
+
 #endif
 
 #include <cstddef>
@@ -11,14 +15,14 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define InValidIdx SIZE_MAX
 
-template <typename T, typename = void>
+template<typename T, typename = void>
 struct DefaultHasher {
     uint64_t operator()(const T &key) const noexcept {
         return static_cast<uint64_t>(std::hash<T>()(key));
     }
 };
 
-template <typename T>
+template<typename T>
 struct DefaultHasher<T, typename std::enable_if<std::is_integral<T>::value>::type> {
     uint64_t operator()(const T &key) const noexcept {
         constexpr uint64_t prime = 0x9e3779b97f4a7c15;
@@ -31,37 +35,59 @@ struct DefaultHasher<T, typename std::enable_if<std::is_integral<T>::value>::typ
 };
 
 struct key_test {
-    template <typename U>
+    template<typename U>
     static auto test(int) -> decltype(std::declval<U>().key(), std::true_type());
-    template <typename>
+
+    template<typename>
     static auto test(...) -> std::false_type;
 };
-template <typename T>
-using has_key = decltype(key_test::template test<T>(0));
-template <typename K, typename T> const K &get_key(const T &entry, std::true_type const &) { return entry.key(); }
-template <typename K, typename T> const K &get_key(const T &entry, std::false_type const &) { return entry; }
-template <typename K, typename T> const K &get_key(const T &entry) { return get_key<K, T>(entry, has_key<T>{}); }
 
-template <typename Key, typename Value>
+template<typename T>
+using has_key = decltype(key_test::template test<T>(0));
+
+template<typename K, typename T>
+const K &get_key(const T &entry, std::true_type const &) { return entry.key(); }
+
+template<typename K, typename T>
+const K &get_key(const T &entry, std::false_type const &) { return entry; }
+
+template<typename K, typename T>
+const K &get_key(const T &entry) { return get_key<K, T>(entry, has_key<T>{}); }
+
+template<typename Key, typename Value>
 struct HashPair {
     /* stl pair interface compatible */
     Key first;
     Value second;
+
     HashPair(const Key &k, const Value &v) : first(k), second(v) {}
+
     HashPair(Key &&k, const Value &v) : first(std::move(k)), second(v) {}
+
     HashPair(const Key &k, Value &&v) : first(k), second(std::move(v)) {}
+
     HashPair(Key &&k, Value &&v) : first(std::move(k)), second(std::move(v)) {}
-    template <typename ...Args>
+
+    template<typename ...Args>
     HashPair(const Key &k, Args &&...args) : first(k), second(std::forward<Args>(args)...) {}
-    template <typename ...Args>
+
+    template<typename ...Args>
     HashPair(Key &&k, Args &&...args) : first(std::move(k)), second(std::forward<Args>(args)...) {}
+
     HashPair(const HashPair &other) : first(other.first), second(other.second) {}
+
     HashPair(HashPair &&other) : first(std::move(other.first)), second(std::move(other.second)) {}
+
     HashPair &operator=(const HashPair &other) = default;
+
     HashPair &operator=(HashPair &&other) = default;
+
     const Key &key() const { return first; }
+
     const Value &value() const { return second; }
+
     Value &value() { return second; }
+
     operator Key() const { return first; }
 };
 
@@ -69,10 +95,10 @@ struct HashPair {
 #define DEFAULT_ALLOCATOR std::allocator
 #define FORCE_INLINE __attribute__((always_inline))
 
-template <typename entry_base, typename key_type, 
-          class Hasher = DefaultHasher<key_type>, 
-          class KeyEqual = std::equal_to<entry_base>,
-          class Allocator = DEFAULT_ALLOCATOR<entry_base>>
+template<typename entry_base, typename key_type,
+        class Hasher = DefaultHasher<key_type>,
+        class KeyEqual = std::equal_to<entry_base>,
+        class Allocator = DEFAULT_ALLOCATOR<entry_base>>
 class FlatTable : public Hasher, public KeyEqual, public Allocator {
     using self_type = FlatTable<entry_base, key_type, Hasher, KeyEqual, Allocator>;
     enum class Ctrl : int8_t {
@@ -87,14 +113,20 @@ class FlatTable : public Hasher, public KeyEqual, public Allocator {
 
     struct _Store : public Hasher, public KeyEqual, public Allocator {
         size_t hash_func(const key_type &k) { return Hasher::operator()(k); }
+
         bool cmp(const key_type &k1, const key_type &k2) { return KeyEqual::operator()(k1, k2); }
 
         _Store(const Hasher &h, const KeyEqual &ke, const Allocator &a)
-            : Hasher(h), KeyEqual(ke), Allocator(a) {}
+                : Hasher(h), KeyEqual(ke), Allocator(a) {}
+
         _Store(const _Store &) = default;
+
         _Store(_Store &&) = default;
+
         _Store &operator=(const _Store &) = default;
+
         _Store &operator=(_Store &&) = default;
+
         friend void swap(_Store &a, _Store &b) noexcept {
             using std::swap;
             swap(static_cast<Hasher &>(a), static_cast<Hasher &>(b));
@@ -102,6 +134,7 @@ class FlatTable : public Hasher, public KeyEqual, public Allocator {
             swap(static_cast<Allocator &>(a), static_cast<Allocator &>(b));
             swap(a._available, b._available);
         }
+
         size_t _available{0};
     };
 
@@ -116,8 +149,7 @@ public:
 
     FlatTable(size_t capacity = default_capacity, const Hasher &hasher = Hasher(),
               const KeyEqual &equal = KeyEqual(), const Allocator &alloc = Allocator())
-        :  _store(hasher, equal, alloc)
-    {
+            : _store(hasher, equal, alloc) {
         if (capacity == 0) {
             _capacity = default_capacity;
         } else {
@@ -138,9 +170,9 @@ public:
         size_t all_size = align_ctrl_size + align(slot_size, group_size);
         _store._available = _capacity * max_load_factor;
         char *p = get_rebind_allocator<char>().allocate(all_size);
-        _ctrl = (Ctrl *)p;
-        _data = (entry_base *)(p + align_ctrl_size);
-        memset(_ctrl, (int8_t)Ctrl::EMPTY, ctrl_size);
+        _ctrl = (Ctrl *) p;
+        _data = (entry_base *) (p + align_ctrl_size);
+        memset(_ctrl, (int8_t) Ctrl::EMPTY, ctrl_size);
         _ctrl[_capacity] = Ctrl::END;
     }
 
@@ -150,15 +182,15 @@ public:
         size_t slot_size = sizeof(entry_base) * _capacity;
         size_t all_size = align_ctrl_size + align(slot_size, group_size);
         char *p = get_rebind_allocator<char>().allocate(all_size);
-        _ctrl = (Ctrl *)p;
-        _data = (entry_base *)(p + align_ctrl_size);
+        _ctrl = (Ctrl *) p;
+        _data = (entry_base *) (p + align_ctrl_size);
         memcpy(_ctrl, other._ctrl, ctrl_size);
         for (size_t gidx = 0; gidx < _capacity; gidx += group_size) {
             size_t used_slot = match_full(gidx);
             while (used_slot) {
                 size_t slot_idx = __builtin_ctz(used_slot);
                 size_t true_idx = gidx + slot_idx;
-                new (&_data[true_idx]) entry_base(other._data[true_idx]);
+                new(&_data[true_idx]) entry_base(other._data[true_idx]);
                 used_slot &= used_slot - 1;
             }
         }
@@ -166,19 +198,17 @@ public:
     }
 
     FlatTable(FlatTable &&other)
-        : _ctrl(other._ctrl),
-          _data(other._data),
-          _store(std::move(other._store)),
-          _capacity(other._capacity)
-    {
+            : _ctrl(other._ctrl),
+              _data(other._data),
+              _store(std::move(other._store)),
+              _capacity(other._capacity) {
         other._ctrl = NULL;
         other._data = NULL;
         other._store._available = 0;
         other._capacity = 0;
     }
 
-    FlatTable &operator=(const FlatTable &other)
-    {
+    FlatTable &operator=(const FlatTable &other) {
         _capacity = other._capacity;
         _store = other._store;
         size_t ctrl_size = sizeof(Ctrl) * (_capacity + group_size);
@@ -186,15 +216,15 @@ public:
         size_t slot_size = sizeof(entry_base) * _capacity;
         size_t all_size = align_ctrl_size + align(slot_size, group_size);
         char *p = get_rebind_allocator<char>().allocate(all_size);
-        _ctrl = (Ctrl *)p;
-        _data = (entry_base *)(p + align_ctrl_size);
+        _ctrl = (Ctrl *) p;
+        _data = (entry_base *) (p + align_ctrl_size);
         memcpy(_ctrl, other._ctrl, ctrl_size);
         for (size_t gidx = 0; gidx < _capacity; gidx += group_size) {
             size_t used_slot = match_full(gidx);
             while (used_slot) {
                 size_t slot_idx = __builtin_ctz(used_slot);
                 size_t true_idx = gidx + slot_idx;
-                new (&_data[true_idx]) entry_base(other._data[true_idx]);
+                new(&_data[true_idx]) entry_base(other._data[true_idx]);
                 used_slot &= used_slot - 1;
             }
         }
@@ -221,32 +251,38 @@ public:
     void clear() {
         destroy_used_slots();
         size_t ctrl_size = sizeof(Ctrl) * (_capacity + group_size);
-        memset(_ctrl, (int8_t)Ctrl::EMPTY, ctrl_size);
+        memset(_ctrl, (int8_t) Ctrl::EMPTY, ctrl_size);
         _ctrl[_capacity] = Ctrl::END;
         _store._available = _capacity * max_load_factor;
     }
 
-    size_t size() const { return (size_t)(_capacity * max_load_factor) - _store._available; }
+    size_t size() const { return (size_t) (_capacity * max_load_factor) - _store._available; }
+
     bool empty() const { return size() == 0; }
 
     FORCE_INLINE const Allocator &get_allocator() const { return _store; }
+
     FORCE_INLINE Allocator &get_allocator() { return _store; }
-    template <class U>
-    typename Allocator::template rebind<U>::other get_rebind_allocator() const {
-        using rebound_alloc_type = typename Allocator::template rebind<U>::other;
+
+    template<class U>
+    typename std::allocator_traits<Allocator>::template rebind_alloc<U> get_rebind_allocator() const {
+        using rebound_alloc_type = typename std::allocator_traits<Allocator>::template rebind_alloc<U>;
         return rebound_alloc_type(get_allocator());
     }
 
 
-    template <typename reference, typename pointer>
+    template<typename reference, typename pointer>
     struct iterator_template {
         using iterator_category = std::forward_iterator_tag;
         using value_type = entry_base;
 
         iterator_template(FlatTable *table, size_t group_idx, size_t slot_idx)
-            : _table(table), _group_idx(group_idx), _slot_idx(slot_idx) {}
+                : _table(table), _group_idx(group_idx), _slot_idx(slot_idx) {}
+
         iterator_template() : _table(NULL), _group_idx(InValidIdx), _slot_idx(InValidIdx) {}
+
         reference operator*() { return *get_data_ptr(); }
+
         pointer operator->() { return get_data_ptr(); }
 
         iterator_template &operator++() {
@@ -286,16 +322,19 @@ public:
         }
 
         iterator_template &operator--() = delete;
+
         bool operator==(const iterator_template &other) const {
             return _table == other._table && _group_idx == other._group_idx &&
                    _slot_idx == other._slot_idx;
         }
+
         bool operator!=(const iterator_template &other) const {
             return !operator==(other);
         }
 
     private:
         friend class FlatTable;
+
         FlatTable *_table;
         size_t _group_idx; /* idx of a group in the whole _data, range[0, _capacity] */
         size_t _slot_idx; /* idx of a slot in a group, range [0, 15] */
@@ -341,6 +380,7 @@ public:
     }
 
     iterator end() { return iterator(NULL, InValidIdx, InValidIdx); }
+
     const_iterator cend() const { return const_iterator(NULL, InValidIdx, InValidIdx); }
 
     iterator find(const key_type &k) {
@@ -371,12 +411,12 @@ public:
         }
     }
 
-    bool contains(const key_type& key) { return cfind(key) != cend(); }
+    bool contains(const key_type &key) { return cfind(key) != cend(); }
 
-    template <typename ...Args>
+    template<typename ...Args>
     std::pair<iterator, bool> emplace(Args &&...args) {
         entry_base entry(std::forward<Args>(args)...);
-        const key_type &k = get_key<key_type,entry_base>(entry);
+        const key_type &k = get_key<key_type, entry_base>(entry);
         size_t hash_32 = get_hash(k);
         size_t hash_h1 = h1(hash_32);
         int8_t hash_h2 = h2(hash_32);
@@ -392,12 +432,12 @@ public:
                 it = find_internal<iterator>(k, gidx, hash_h2, found);
             }
             entry_base *entry_ptr = prepare_construct(it._group_idx, it._slot_idx, hash_h2);
-            get_allocator().construct(entry_ptr, std::move(entry));
+            std::allocator_traits<Allocator>::construct(get_allocator(), entry_ptr, std::move(entry));
             return {it, true};
         }
     }
 
-    iterator insert_reserve(key_type &&k, bool &found){
+    iterator insert_reserve(key_type &&k, bool &found) {
         size_t hash_32 = get_hash(k);
         size_t hash_h1 = h1(hash_32);
         int8_t hash_h2 = h2(hash_32);
@@ -410,13 +450,13 @@ public:
                 it = find_internal<iterator>(k, gidx, hash_h2, found);
             }
             entry_base *entry_ptr = prepare_construct(it._group_idx, it._slot_idx, hash_h2);
-            memset((char *)entry_ptr + sizeof(key_type), 0, sizeof(entry_base) - sizeof(key_type));
-            get_allocator().construct((key_type *)entry_ptr, std::move(k));
+            memset((char *) entry_ptr + sizeof(key_type), 0, sizeof(entry_base) - sizeof(key_type));
+            std::allocator_traits<Allocator>::construct(get_allocator(), (key_type *) entry_ptr, std::move(k));
         }
         return it;
     }
 
-    iterator insert_reserve(const key_type &k, bool &found){
+    iterator insert_reserve(const key_type &k, bool &found) {
         size_t hash_32 = get_hash(k);
         size_t hash_h1 = h1(hash_32);
         int8_t hash_h2 = h2(hash_32);
@@ -429,14 +469,14 @@ public:
                 it = find_internal<iterator>(k, gidx, hash_h2, found);
             }
             entry_base *entry_ptr = prepare_construct(it._group_idx, it._slot_idx, hash_h2);
-            memset((char *)entry_ptr + sizeof(key_type), 0, sizeof(entry_base) - sizeof(key_type));
-            get_allocator().construct((key_type *)entry_ptr, k);
+            memset((char *) entry_ptr + sizeof(key_type), 0, sizeof(entry_base) - sizeof(key_type));
+            std::allocator_traits<Allocator>::construct(get_allocator(), (key_type *) entry_ptr, k);
         }
         return it;
     }
 
     std::pair<iterator, bool> insert(const entry_base &entry) {
-        const key_type &k = get_key<key_type,entry_base>(entry);
+        const key_type &k = get_key<key_type, entry_base>(entry);
         size_t hash_32 = get_hash(k);
         size_t hash_h1 = h1(hash_32);
         int8_t hash_h2 = h2(hash_32);
@@ -452,13 +492,13 @@ public:
                 it = find_internal<iterator>(k, gidx, hash_h2, found);
             }
             entry_base *entry_ptr = prepare_construct(it._group_idx, it._slot_idx, hash_h2);
-            get_allocator().construct(entry_ptr, entry);
+            std::allocator_traits<Allocator>::construct(get_allocator(), entry_ptr, entry);
             return {it, true};
         }
     }
 
     std::pair<iterator, bool> insert(entry_base &&entry) {
-        const key_type &k = get_key<key_type,entry_base>(entry);
+        const key_type &k = get_key<key_type, entry_base>(entry);
         size_t hash_32 = get_hash(k);
         size_t hash_h1 = h1(hash_32);
         int8_t hash_h2 = h2(hash_32);
@@ -474,20 +514,20 @@ public:
                 it = find_internal<iterator>(k, gidx, hash_h2, found);
             }
             entry_base *entry_ptr = prepare_construct(it._group_idx, it._slot_idx, hash_h2);
-            get_allocator().construct(entry_ptr, std::move(entry));
+            std::allocator_traits<Allocator>::construct(get_allocator(), entry_ptr, std::move(entry));
             return {it, true};
         }
     }
-    
+
     iterator erase(iterator it) {
         if (it == end()) {
             return it;
         }
         ++_store._available;
         size_t true_idx = get_true_idx(it._group_idx, it._slot_idx);
-        set_meta(true_idx, (int8_t)Ctrl::DELETED);
+        set_meta(true_idx, (int8_t) Ctrl::DELETED);
         entry_base *entry_ptr = &_data[true_idx];
-        get_allocator().destroy(entry_ptr);
+        std::allocator_traits<Allocator>::destroy(get_allocator(), entry_ptr);
         ++it;
         return it;
     }
@@ -498,23 +538,23 @@ public:
         }
         ++_store._available;
         size_t true_idx = get_true_idx(it._group_idx, it._slot_idx);
-        set_meta(true_idx, (int8_t)Ctrl::DELETED);
+        set_meta(true_idx, (int8_t) Ctrl::DELETED);
         entry_base *entry_ptr = &_data[true_idx];
-        get_allocator().destroy(entry_ptr);
+        std::allocator_traits<Allocator>::destroy(get_allocator(), entry_ptr);
         ++it;
         return it;
     }
 
-    size_t erase(const key_type &k){
+    size_t erase(const key_type &k) {
         iterator it = find(k);
         if (it == end()) {
             return 0;
         }
         ++_store._available;
         size_t true_idx = get_true_idx(it._group_idx, it._slot_idx);
-        set_meta(true_idx, (int8_t)Ctrl::DELETED);
+        set_meta(true_idx, (int8_t) Ctrl::DELETED);
         entry_base *entry_ptr = &_data[true_idx];
-        get_allocator().destroy(entry_ptr);
+        std::allocator_traits<Allocator>::destroy(get_allocator(), entry_ptr);
         return 1ul;
     }
 
@@ -525,14 +565,14 @@ public:
         destroy_table();
     }
 
-    template <typename Callback>
+    template<typename Callback>
     void ctraverse(const_iterator start, const_iterator dest, Callback &&callback) {
         size_t start_true_idx = 0;
         size_t dest_true_idx = 0;
         if (start == cend()) {
             return;
         }
-        start_true_idx = get_true_idx(start._group_idx, start._slot_idx); 
+        start_true_idx = get_true_idx(start._group_idx, start._slot_idx);
         if (dest == cend()) {
             dest_true_idx = _capacity;
         } else {
@@ -546,7 +586,7 @@ public:
         size_t sidx = 0;
         for (; gidx < dest_true_idx; gidx += group_size) {
             used_slot = match_full(gidx);
-            while(used_slot) {
+            while (used_slot) {
                 sidx = __builtin_ctz(used_slot);
                 if (unlikely(gidx + sidx > dest_true_idx) || unlikely(gidx + sidx == _capacity)) {
                     return;
@@ -559,14 +599,14 @@ public:
         return;
     }
 
-    template <typename Callback>
+    template<typename Callback>
     void traverse(iterator start, iterator dest, Callback &&callback) {
         size_t start_true_idx = 0;
         size_t dest_true_idx = 0;
         if (start == end()) {
             return;
         }
-        start_true_idx = get_true_idx(start._group_idx, start._slot_idx); 
+        start_true_idx = get_true_idx(start._group_idx, start._slot_idx);
         if (dest == end()) {
             dest_true_idx = _capacity;
         } else {
@@ -580,7 +620,7 @@ public:
         size_t sidx = 0;
         for (; gidx < dest_true_idx; gidx += group_size) {
             used_slot = match_full(gidx);
-            while(used_slot) {
+            while (used_slot) {
                 sidx = __builtin_ctz(used_slot);
                 if (unlikely(gidx + sidx > dest_true_idx) || unlikely(gidx + sidx == _capacity)) {
                     return;
@@ -595,19 +635,28 @@ public:
 
 private:
     size_t align(size_t x, size_t a) { return (x + a - 1) & (~(a - 1)); }
+
     size_t get_hash(const key_type &key) const { return _store.hash_func(key); }
+
     bool cmp_key(const key_type &k1, const key_type &k2) const { return _store.cmp(k1, k2); }
+
     size_t h1(const size_t hash) const { return hash >> 7; }
-    int8_t h2(const size_t hash) const { return (int8_t)(hash & 0x7F); }
+
+    int8_t h2(const size_t hash) const { return (int8_t) (hash & 0x7F); }
+
     bool is_full(int8_t meta) const { return meta >= 0; }
+
     size_t next_capacity(size_t capacity) { return 2 * capacity + 1; }
+
     bool should_grow() { return _store._available == 0; }
+
     size_t get_groupnum() const { return _capacity / group_size + 1; }
+
     size_t get_gidx(const size_t hash_h1) const { return hash_h1 & _capacity; }
-    
+
     size_t get_allsize() {
         return align(sizeof(Ctrl) * (_capacity + group_size), group_size)
-             + align(sizeof(entry_base) * _capacity, group_size);
+               + align(sizeof(entry_base) * _capacity, group_size);
     }
 
     /* idx of a slot in the whole _data. */
@@ -616,18 +665,18 @@ private:
     }
 
     void set_meta(size_t true_idx, int8_t value) {
-        _ctrl[true_idx] = (Ctrl)value;
+        _ctrl[true_idx] = (Ctrl) value;
         if (true_idx < group_size - 1) {
-            _ctrl[true_idx + _capacity + 1] = (Ctrl)value;
+            _ctrl[true_idx + _capacity + 1] = (Ctrl) value;
         }
     }
 
     uint16_t match_full(size_t group_idx) const {
-    #if defined(__x86_64__)
-        __m128i group_meta = _mm_loadu_si128((__m128i *)(_ctrl + group_idx));
+#if defined(__x86_64__)
+        __m128i group_meta = _mm_loadu_si128((__m128i *) (_ctrl + group_idx));
         uint16_t res = _mm_movemask_epi8(group_meta);
         return ~res;
-    #else
+#else
         const int8_t* group_meta = _ctrl + group_idx;
         uint16_t res = 0;
         for (size_t i = 0; i < group_size; ++i) {
@@ -636,17 +685,17 @@ private:
             }
         }
         return res;
-    #endif
+#endif
     }
 
     uint16_t match_empty_or_delete(size_t group_idx) const {
-    #if defined(__x86_64__)
-        __m128i group_meta = _mm_loadu_si128((__m128i *)(_ctrl + group_idx));
+#if defined(__x86_64__)
+        __m128i group_meta = _mm_loadu_si128((__m128i *) (_ctrl + group_idx));
         __m128i special = _mm_set1_epi8(static_cast<char>(Ctrl::END)); // 0xFF (-1)
         __m128i cmp_res = _mm_cmpgt_epi8(special, group_meta); // cannot swap order!!!!
         uint16_t res = _mm_movemask_epi8(cmp_res);
         return res;
-    #else
+#else
         const int8_t *group_meta = (const int8_t *)_ctrl + group_idx;
         uint16_t res = 0;
         for (size_t i = 0; i < 16; ++i) {
@@ -656,17 +705,17 @@ private:
             }
         }
         return res;
-    #endif
+#endif
     }
-    
+
     uint16_t match_meta(size_t group_idx, int8_t key) const {
-    #if defined(__x86_64__)
+#if defined(__x86_64__)
         __m128i key_128 = _mm_set1_epi8(key);
-        __m128i group_meta = _mm_loadu_si128((__m128i *)(_ctrl + group_idx));
+        __m128i group_meta = _mm_loadu_si128((__m128i *) (_ctrl + group_idx));
         __m128i cmp_res = _mm_cmpeq_epi8(group_meta, key_128);
         uint16_t res = _mm_movemask_epi8(cmp_res);
         return res;
-    #else        
+#else
         const int8_t *group_meta = (const int8_t *)_ctrl + group_idx;
         uint16_t res = 0;
         for (size_t i = 0; i < group_size; ++i) {
@@ -675,7 +724,7 @@ private:
             }
         }
         return res;
-    #endif
+#endif
     }
 
     // check whether the first slot is empty.
@@ -689,7 +738,7 @@ private:
     // used by find.
     // if exists, return the match iterator.
     // if not exists, return the iterator of an empty or delete slot.
-    template <typename Iter>
+    template<typename Iter>
     Iter find_internal(const key_type &key, size_t group_main_idx, int8_t hash_h2, bool &found) const {
         Iter it;
         bool record = false;
@@ -754,7 +803,7 @@ private:
             if (free_slot) {
                 slot_idx = __builtin_ctz(free_slot);
                 entry_base *entry_ptr = prepare_construct(group_idx, slot_idx, hash_h2);
-                get_allocator().construct(entry_ptr, std::move(entry));
+                std::allocator_traits<Allocator>::construct(get_allocator(), entry_ptr, std::move(entry));
                 return;
             }
         }
@@ -765,9 +814,9 @@ private:
 
     // you can also use simd here, but will not be faster since most slot is full
     void rehash(size_t new_capacity) {
-        FlatTable new_table = self_type (new_capacity, _store, _store, get_allocator());
+        FlatTable new_table = self_type(new_capacity, _store, _store, get_allocator());
         for (size_t i = 0; i < _capacity; ++i) {
-            if (is_full((int8_t)_ctrl[i])) {
+            if (is_full((int8_t) _ctrl[i])) {
                 entry_base &entry = _data[i];
                 size_t hash_32 = get_hash(get_key<key_type>(entry));
                 size_t hash_h1 = h1(hash_32);
@@ -789,14 +838,14 @@ private:
             while (used_slot) {
                 slot_idx = __builtin_ctz(used_slot);
                 true_idx = gidx + slot_idx;
-                get_allocator().destroy(&_data[true_idx]); 
+                std::allocator_traits<Allocator>::destroy(get_allocator(), &_data[true_idx]);
                 used_slot &= used_slot - 1;
             }
         }
     }
 
     void destroy_table() {
-        get_rebind_allocator<char>().deallocate((char *)_ctrl, get_allsize());
+        get_rebind_allocator<char>().deallocate((char *) _ctrl, get_allsize());
         _ctrl = NULL;
         _data = NULL;
         _capacity = 0;
@@ -805,10 +854,10 @@ private:
 };
 
 
-template <typename Key, typename Value,
-          class Hasher = DefaultHasher<Key>, 
-          class KeyEqual = std::equal_to<Key>,
-          class Allocator = DEFAULT_ALLOCATOR<HashPair<Key, Value>>>
+template<typename Key, typename Value,
+        class Hasher = DefaultHasher<Key>,
+        class KeyEqual = std::equal_to<Key>,
+        class Allocator = DEFAULT_ALLOCATOR<HashPair<Key, Value>>>
 class HashTable : public FlatTable<HashPair<Key, Value>, Key, Hasher, KeyEqual, Allocator> {
     using super = FlatTable<HashPair<Key, Value>, Key, Hasher, KeyEqual, Allocator>;
 public:
@@ -816,64 +865,71 @@ public:
     using iterator = typename super::iterator;
     using super::operator=;
 
-    Value &operator[](const Key &key)
-        { bool unused; return this->insert_reserve(key, unused)->value(); }
-    Value &operator[](Key &&key)
-        { bool unused; return this->insert_reserve(std::move(key), unused)->value(); }
-    template <typename ...Args>
-    std::pair<iterator, bool> try_emplace(const Key &key, Args &&...args)
-    {
+    Value &operator[](const Key &key) {
+        bool unused;
+        return this->insert_reserve(key, unused)->value();
+    }
+
+    Value &operator[](Key &&key) {
+        bool unused;
+        return this->insert_reserve(std::move(key), unused)->value();
+    }
+
+    template<typename ...Args>
+    std::pair<iterator, bool> try_emplace(const Key &key, Args &&...args) {
         bool found;
         auto it = this->insert_reserve(key, found);
         if (found) {
             return std::make_pair(it, false);
         }
-        super::get_allocator().construct(&it->value(), std::forward<Args>(args)...);
+        std::allocator_traits<Allocator>::construct(super::get_allocator(), &it->value(), std::forward<Args>(args)...);
         return std::make_pair(it, true);
     }
-    template <typename ...Args>
-    std::pair<iterator, bool> try_emplace(Key &&key, Args &&...args)
-    {
+
+    template<typename ...Args>
+    std::pair<iterator, bool> try_emplace(Key &&key, Args &&...args) {
         bool found;
         auto it = this->insert_reserve(std::move(key), found);
         if (found) {
             return std::make_pair(it, false);
         }
-        super::get_allocator().construct(&it->value(), std::forward<Args>(args)...);
+        std::allocator_traits<Allocator>::construct(super::get_allocator(), &it->value(), std::forward<Args>(args)...);
         return std::make_pair(it, true);
     }
 };
 
-template <typename T,
-          class Hasher = DefaultHasher<T>, 
-          class KeyEqual = std::equal_to<T>,
-          class Allocator = DEFAULT_ALLOCATOR<T>>
+template<typename T,
+        class Hasher = DefaultHasher<T>,
+        class KeyEqual = std::equal_to<T>,
+        class Allocator = DEFAULT_ALLOCATOR<T>>
 class HashSet : public FlatTable<T, T, Hasher, KeyEqual, Allocator> {
     using super = FlatTable<T, T, Hasher, KeyEqual, Allocator>;
 public:
     using super::super;
-    template <typename InputIt>
+
+    template<typename InputIt>
     HashSet(InputIt first, InputIt last, const Allocator &alloc = Allocator())
-        : super(std::distance(first, last), alloc)
-    {
+            : super(std::distance(first, last), alloc) {
         for (auto it = first; it != last; ++it) {
             this->emplace(*it);
         }
     }
+
     using iterator = typename super::iterator;
     using const_iterator = typename super::const_iterator;
     using super::operator=;
 };
 
 
-template <typename Key, typename Value,
-          class Hasher = DefaultHasher<Key>, 
-          class KeyEqual = std::equal_to<Key>,
-          class Allocator = DEFAULT_ALLOCATOR<HashPair<Key, Value>>>
+template<typename Key, typename Value,
+        class Hasher = DefaultHasher<Key>,
+        class KeyEqual = std::equal_to<Key>,
+        class Allocator = DEFAULT_ALLOCATOR<HashPair<Key, Value>>>
 using UnorderedMap = HashTable<Key, Value, Hasher, KeyEqual, Allocator>;
-template <typename T,
-          class Hasher = DefaultHasher<T>, 
-          class KeyEqual = std::equal_to<T>,
-          class Allocator = DEFAULT_ALLOCATOR<T>>
+template<typename T,
+        class Hasher = DefaultHasher<T>,
+        class KeyEqual = std::equal_to<T>,
+        class Allocator = DEFAULT_ALLOCATOR<T>>
 using UnorderedSet = HashSet<T, Hasher, KeyEqual, Allocator>;
 
+#endif //_C__23_SWISSTABLE_H
