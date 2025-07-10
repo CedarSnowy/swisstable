@@ -659,7 +659,7 @@ private:
     #elif defined(__ARM_NEON) || defined(__aarch64__)
         uint8x16_t group_meta = vld1q_u8(reinterpret_cast<const uint8_t*>(_ctrl + group_idx));
         uint8x16_t special = vdupq_n_u8(static_cast<char>(Ctrl::END));
-        int8x16_t cmp_res = vcgtq_s8(vreinterpretq_s8_u8(special), vreinterpretq_s8_u8(group_meta));
+        uint8x16_t cmp_res = vcgtq_s8(vreinterpretq_s8_u8(special), vreinterpretq_s8_u8(group_meta));
 
         static const uint8x16_t mask = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
         uint8x16_t masked = vandq_u8(mask, (uint8x16_t)vshrq_n_s8((int8x16_t)cmp_res, 7));
