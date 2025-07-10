@@ -429,29 +429,228 @@ void test_clear_performance_comparison() {
     }
 }
 
-int main() {
-    // UnorderedMap<int, int> m;
-    // for (size_t i = 0; i < 100; ++i) {
-    //     m.try_emplace(i, i);
-    // }
-    // for (size_t i = 0; i < 100; ++i) {
-    //     m.find(i);
-    // }
-    // for (size_t i = 0; i < 100; ++i) {
-    //     m.erase(i);
-    // }
-    // test correctness
-    // test_correctness();
-    // test_find_correctness();
-    // test_erase_correctness();
+enum class Operation { INSERT, FIND, ERASE, ITERATE, CLEAR };
 
-    // // perfermance test
+void test_random_operations(size_t num_ops = 1000000, int key_range = 10000) {
+    cout << "===== Randomized Test: " << num_ops << " operations =====" << endl;
+    
+    UnorderedMap<int, int> test_map;
+    unordered_map<int, int> ref_map; // 参考映射
+    mt19937 rng(random_device{}());
+    uniform_int_distribution<int> key_dist(0, key_range);
+    uniform_int_distribution<int> op_dist(0, 4); // 增加CLEAR操作
+    
+    size_t inserts = 0, finds = 0, erases = 0, iterates = 0, clears = 0;
+    vector<string> op_history; // 记录操作历史
+    
+    // 错误处理函数
+    auto log_error = [&](const string& error_msg) {
+        cerr << "\nERROR: " << error_msg << endl;
+        cerr << "Operation history (up to error):" << endl;
+        for (size_t i = 0; i < op_history.size(); ++i) {
+            cerr << "  Step " << i << ": " << op_history[i] << endl;
+        }
+        cerr << "FAIL" << endl;
+        exit(1);
+    };
+    
+    for (size_t i = 0; i < num_ops; ++i) {
+        int key = key_dist(rng);
+        Operation op = static_cast<Operation>(op_dist(rng));
+        string op_desc;
+        
+        switch (op) {
+            case Operation::INSERT: {
+                op_desc = "INSERT key=" + to_string(key);
+                op_history.push_back(op_desc);
+                
+                auto [test_it, test_inserted] = test_map.try_emplace(key, key);
+                bool ref_inserted = ref_map.try_emplace(key, key).second;
+                
+                if (test_inserted != ref_inserted) {
+                    log_error("Insert mismatch! Key: " + to_string(key) + 
+                              " Test: " + (test_inserted ? "inserted" : "not inserted") + 
+                              " Ref: " + (ref_inserted ? "inserted" : "not inserted"));
+                }
+                
+                if (test_inserted) {
+                    if (test_it->second != key) {
+                        log_error("Insert value mismatch! Key: " + to_string(key) +
+                                  " Value: " + to_string(test_it->second) +
+                                  " Expected: " + to_string(key));
+                    }
+                }
+                inserts++;
+                break;
+            }
+                
+            case Operation::FIND: {
+                op_desc = "FIND key=" + to_string(key);
+                op_history.push_back(op_desc);
+                
+                auto test_it = test_map.find(key);
+                auto ref_it = ref_map.find(key);
+                
+                if ((test_it == test_map.end()) != (ref_it == ref_map.end())) {
+                    log_error("Find presence mismatch! Key: " + to_string(key));
+                }
+                
+                if (test_it != test_map.end() && ref_it != ref_map.end()) {
+                    if (test_it->second != ref_it->second) {
+                        log_error("Find value mismatch! Key: " + to_string(key) + 
+                                 " Test: " + to_string(test_it->second) + 
+                                 " Ref: " + to_string(ref_it->second));
+                    }
+                }
+                finds++;
+                break;
+            }
+                
+            case Operation::ERASE: {
+                op_desc = "ERASE key=" + to_string(key);
+                op_history.push_back(op_desc);
+                
+                size_t test_erased = test_map.erase(key);
+                size_t ref_erased = ref_map.erase(key);
+                
+                if (test_erased != ref_erased) {
+                    log_error("Erase mismatch! Key: " + to_string(key) + 
+                             " Test: " + to_string(test_erased) + 
+                             " Ref: " + to_string(ref_erased));
+                }
+                erases++;
+                break;
+            }
+                
+            case Operation::ITERATE: {
+                op_desc = "ITERATE";
+                op_history.push_back(op_desc);
+                
+                unordered_map<int, int> test_elements;
+                for (auto it = test_map.begin(); it != test_map.end(); ++it) {
+                    if (test_elements.count(it->first)) {
+                        log_error("Duplicate key in iteration: " + to_string(it->first));
+                    }
+                    test_elements[it->first] = it->second;
+                }
+                
+                if (test_elements.size() != ref_map.size()) {
+                    for (auto it = test_map.begin(); it != test_map.end(); ++it) {
+                            cout << it->second <<" ";
+                        }
+                    cout << endl;
+                    log_error("Size mismatch! Iteration: " + to_string(test_elements.size()) +
+                              " Expected: " + to_string(ref_map.size()));
+                }
+                
+                for (const auto& [k, v] : ref_map) {
+                    if (!test_elements.count(k)) {
+                        log_error("Missing key in iteration: " + to_string(k));
+                    }
+                    if (test_elements[k] != v) {
+                        log_error("Value mismatch for key " + to_string(k) + 
+                                 " Iteration: " + to_string(test_elements[k]) +
+                                 " Expected: " + to_string(v));
+                    }
+                }
+                iterates++;
+                break;
+            }
+                
+            case Operation::CLEAR: { // 添加CLEAR操作
+                op_desc = "CLEAR";
+                op_history.push_back(op_desc);
+                
+                test_map.clear();
+                ref_map.clear();
+                
+                // 验证clear后的状态
+                if (test_map.size() != 0) {
+                    log_error("Size after clear should be 0, got " + to_string(test_map.size()));
+                }
+                if (test_map.begin() != test_map.end()) {
+                    log_error("Begin should equal end after clear");
+                }
+                if (!test_map.empty()) {
+                    log_error("Map should be empty after clear");
+                }
+                
+                clears++;
+                break;
+            }
+        }
+        
+        // 定期检查大小一致性
+        if (i % 100 == 0) {
+            if (test_map.size() != ref_map.size()) {
+                log_error("Size mismatch at op " + to_string(i) + 
+                         " Test: " + to_string(test_map.size()) + 
+                         " Ref: " + to_string(ref_map.size()));
+            }
+        }
+    }
+    
+    cout << "Operations summary:\n"
+         << "  Inserts: " << inserts << "\n"
+         << "  Finds: " << finds << "\n"
+         << "  Erases: " << erases << "\n"
+         << "  Iterates: " << iterates << "\n"
+         << "  Clears: " << clears << endl; // 添加清除操作统计
+    
+    // 最终完整性检查
+    unordered_map<int, int> final_elements;
+    for (auto it = test_map.begin(); it != test_map.end(); ++it) {
+        final_elements[it->first] = it->second;
+    }
+    
+    if (final_elements.size() != ref_map.size()) {
+        log_error("Final size mismatch! Test: " + to_string(final_elements.size()) + 
+                 " Ref: " + to_string(ref_map.size()));
+    }
+    for (const auto& [k, v] : ref_map) {
+        if (!final_elements.count(k)) {
+            log_error("Missing key in final: " + to_string(k));
+        }
+        if (final_elements[k] != v) {
+            log_error("Value mismatch for key " + to_string(k) + 
+                     " Final: " + to_string(final_elements[k]) +
+                     " Expected: " + to_string(v));
+        }
+    }
+    
+    // 额外测试clear函数
+    cout << "Testing final clear..." << endl;
+    test_map.clear();
+    ref_map.clear();
+    
+    // 检查clear后的状态
+    if (test_map.size() != 0) {
+        log_error("Final clear: size should be 0, got " + to_string(test_map.size()));
+    }
+    if (test_map.begin() != test_map.end()) {
+        log_error("Final clear: begin should equal end");
+    }
+    if (!test_map.empty()) {
+        log_error("Final clear: map should be empty");
+    }
+    
+    // 插入新元素验证结构仍然有效
+    test_map.try_emplace(0, 0);
+    if (test_map.size() != 1 || test_map.find(0) == test_map.end()) {
+        log_error("Insertion failed after final clear");
+    }
+    
+    cout << "ALL TESTS PASSED" << endl;
+}
+
+int main() {
+    // correctness test
+    test_random_operations();
+
+    // perfermance test
     test_performance_comparison();        // insert
     test_find_performance_comparison();   // find
     test_erase_performance_comparison();  // erase
     test_iteration_performance_comparison(); // iteration
     test_clear_performance_comparison();  // clear
-    
-    // std::cout << "\nAll tests completed!\n";
-    // return 0;
 }

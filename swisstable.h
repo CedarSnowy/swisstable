@@ -1,5 +1,7 @@
 #if defined(__x86_64__)
 #include <emmintrin.h>
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+#include <arm_neon.h>
 #endif
 
 #include <cstddef>
@@ -627,6 +629,14 @@ private:
         __m128i group_meta = _mm_loadu_si128((__m128i *)(_ctrl + group_idx));
         uint16_t res = _mm_movemask_epi8(group_meta);
         return ~res;
+    #elif defined(__ARM_NEON) || defined(__aarch64__)
+        uint8x16_t group_meta = vld1q_u8(reinterpret_cast<const uint8_t*>(_ctrl + group_idx));
+
+        static const uint8x16_t mask = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
+        uint8x16_t masked = vandq_u8(mask, (uint8x16_t)vshrq_n_s8((int8x16_t)group_meta, 7));
+        uint8x16_t maskedhi = vextq_u8(masked, masked, 8);
+        int16_t res = vaddvq_u16((uint16x8_t)vzip1q_u8(masked, maskedhi));
+        return ~res;
     #else
         const int8_t* group_meta = _ctrl + group_idx;
         uint16_t res = 0;
@@ -646,6 +656,16 @@ private:
         __m128i cmp_res = _mm_cmpgt_epi8(special, group_meta); // cannot swap order!!!!
         uint16_t res = _mm_movemask_epi8(cmp_res);
         return res;
+    #elif defined(__ARM_NEON) || defined(__aarch64__)
+        uint8x16_t group_meta = vld1q_u8(reinterpret_cast<const uint8_t*>(_ctrl + group_idx));
+        uint8x16_t special = vdupq_n_u8(static_cast<char>(Ctrl::END));
+        int8x16_t cmp_res = vcgtq_s8(vreinterpretq_s8_u8(special), vreinterpretq_s8_u8(group_meta));
+
+        static const uint8x16_t mask = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
+        uint8x16_t masked = vandq_u8(mask, (uint8x16_t)vshrq_n_s8((int8x16_t)cmp_res, 7));
+        uint8x16_t maskedhi = vextq_u8(masked, masked, 8);
+        int16_t res = vaddvq_u16((uint16x8_t)vzip1q_u8(masked, maskedhi));
+        return (uint16_t)res;
     #else
         const int8_t *group_meta = (const int8_t *)_ctrl + group_idx;
         uint16_t res = 0;
@@ -666,6 +686,16 @@ private:
         __m128i cmp_res = _mm_cmpeq_epi8(group_meta, key_128);
         uint16_t res = _mm_movemask_epi8(cmp_res);
         return res;
+    #elif defined(__ARM_NEON) || defined(__aarch64__)
+        uint8x16_t key_128 = vdupq_n_u8(key);
+        uint8x16_t group_meta = vld1q_u8(reinterpret_cast<const uint8_t*>(_ctrl + group_idx));
+        uint8x16_t cmp_res = vceqq_u8(group_meta, key_128);
+
+        static const uint8x16_t mask = {1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128};
+        uint8x16_t masked = vandq_u8(mask, (uint8x16_t)vshrq_n_s8((int8x16_t)cmp_res, 7));
+        uint8x16_t maskedhi = vextq_u8(masked, masked, 8);
+        int16_t res = vaddvq_u16((uint16x8_t)vzip1q_u8(masked, maskedhi));
+        return (uint16_t)res;
     #else        
         const int8_t *group_meta = (const int8_t *)_ctrl + group_idx;
         uint16_t res = 0;
