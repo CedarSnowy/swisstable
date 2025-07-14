@@ -124,15 +124,7 @@ public:
             _capacity = default_capacity;
         } else {
             capacity = capacity / max_load_factor;
-            size_t v = capacity + 1;
-            size_t n = v - 1;
-            n |= n >> 1;
-            n |= n >> 2;
-            n |= n >> 4;
-            n |= n >> 8;
-            n |= n >> 16;
-            size_t power = n + 1;
-            _capacity = power - 1;
+            _capacity = align_size(capacity);
         }
         size_t ctrl_size = sizeof(Ctrl) * (_capacity + group_size);
         size_t align_ctrl_size = align(ctrl_size, group_size);
@@ -595,6 +587,8 @@ public:
         return;
     }
 
+    void reserve(size_t size) { rehash(size); }
+
 private:
     size_t align(size_t x, size_t a) { return (x + a - 1) & (~(a - 1)); }
     size_t get_hash(const key_type &key) const { return _store.hash_func(key); }
@@ -606,6 +600,18 @@ private:
     bool should_grow() { return _store._available == 0; }
     size_t get_groupnum() const { return _capacity / group_size + 1; }
     size_t get_gidx(const size_t hash_h1) const { return hash_h1 & _capacity; }
+
+    size_t align_size(size_t size) {
+        /* get the nearest 2^n - 1 */
+        size_t v = size + 1;
+        size_t n = v - 1;
+        n |= n >> 1;
+        n |= n >> 2;
+        n |= n >> 4;
+        n |= n >> 8;
+        n |= n >> 16;
+        return n;
+    }
     
     size_t get_allsize() {
         return align(sizeof(Ctrl) * (_capacity + group_size), group_size)
